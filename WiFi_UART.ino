@@ -1,9 +1,12 @@
 #include <WiFiManager.h>
-#include <Ticker.h>
 #include <FS.h>
 #include <LittleFS.h>
 
-#define STC_POW_PIN 15
+#define MOSFET_PIN  15
+#define MOSFET_ON   1
+#define MOSFET_OFF  0
+#define LED_ON      0
+#define LED_OFF     1
 
 WiFiManager wm;
 WiFiManagerParameter par_baudrate("baudrate", "Baudrate", "9600", 40);
@@ -11,17 +14,6 @@ WiFiManagerParameter par_parity("parity", "Parity", "E", 40);
 
 WiFiServer server(23);
 
-Ticker STC_Ticker;
-bool STC_Reset_Enable=true;
-void STC_Reset_Step1()
-{
-  digitalWrite(STC_POW_PIN, 1);
-  STC_Ticker.once(1,STC_Reset_Step2);  
-}
-void STC_Reset_Step2()
-{
-  STC_Reset_Enable=true;
-}
 void STC_Auto_ISP(char ch)
 {
   static uint8_t STC_7F_Count=0;
@@ -31,12 +23,8 @@ void STC_Auto_ISP(char ch)
     if (STC_7F_Count>=50)
     {
       STC_7F_Count=0;
-      if (STC_Reset_Enable)
-      {
-        STC_Reset_Enable=false;
-        digitalWrite(STC_POW_PIN, 0);
-        STC_Ticker.once(1,STC_Reset_Step1);  
-      }
+      digitalWrite(MOSFET_PIN, !digitalRead(MOSFET_PIN));
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     }
   }
   else
@@ -99,10 +87,10 @@ void setup()
 {
   WiFi.mode(WIFI_STA);
 
-  pinMode(STC_POW_PIN, OUTPUT);
-  digitalWrite(STC_POW_PIN, 1);
+  pinMode(MOSFET_PIN, OUTPUT);
+  digitalWrite(MOSFET_PIN, MOSFET_ON);
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, 1);
+  digitalWrite(LED_BUILTIN, LED_OFF);
 
   set_serial();
 
@@ -125,15 +113,16 @@ void loop()
   WiFiClient client = server.available();
   if (client)
   {
-    digitalWrite(LED_BUILTIN, 0);
+    digitalWrite(MOSFET_PIN, MOSFET_ON);
+    digitalWrite(LED_BUILTIN, LED_ON);
     client.setNoDelay(true);
     while(1)
     {
       if (client.available())
       {
-        char line = client.read();
-        Serial.print(line);
-        STC_Auto_ISP(line);
+        char ch = client.read();
+        Serial.print(ch);
+        STC_Auto_ISP(ch);
       }
       if (Serial.available())
       {
@@ -142,7 +131,7 @@ void loop()
       }
       if(0==client.status())
       {
-        digitalWrite(LED_BUILTIN, 1);
+        digitalWrite(LED_BUILTIN, LED_OFF);
         break;
       }
     }
